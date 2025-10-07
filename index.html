@@ -109,7 +109,7 @@
                 </p>
             </div>
             <!-- テーマカラーを適用 -->
-            <button onclick="agreeToTerms()" class="w-full bg-primary hover:bg-secondary text-white font-bold py-3 px-4 rounded-lg transition duration-150 shadow-md hover:shadow-lg">
+            <button id="agree-terms-button" class="w-full bg-primary hover:bg-secondary text-white font-bold py-3 px-4 rounded-lg transition duration-150 shadow-md hover:shadow-lg">
                 規約に同意して掲示板を開く
             </button>
         </div>
@@ -220,7 +220,7 @@
             
             <!-- AI利用条件メッセージ -->
             <div id="ai-usage-condition" class="mt-4 text-center text-sm text-gray-600">
-                AI機能を利用するには、掲示板に**3回以上**投稿する必要があります。現在の投稿数: <span id="user-post-count" class="font-bold text-primary">0</span>回
+                AI機能を利用するには、掲示板に**1回以上**投稿する必要があります。現在の投稿数: <span id="user-post-count" class="font-bold text-primary">0</span>回
             </div>
         </section>
 
@@ -268,6 +268,13 @@
                 <!-- 投稿がここにリアルタイムで表示されます -->
                 <p id="loading-message" class="text-center text-gray-500">投稿データを読み込み中...</p>
             </div>
+            
+            <!-- ★追加: もっと読み込むボタンのコンテナ -->
+            <div id="load-more-container" class="mt-8 text-center hidden">
+                 <button id="load-more-button" onclick="loadMorePosts()" class="bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-lg transition duration-150 shadow-md">
+                    もっと読み込む
+                </button>
+            </div>
         </section>
     </main>
 
@@ -294,7 +301,7 @@
         const firebaseConfig = USER_PROVIDED_FIREBASE_CONFIG;
         
         // __initial_auth_tokenは環境が提供するグローバル変数として残しておく
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
         // --- ↑↑【修正: ユーザーが提供した設定を直接挿入】↑↑ ---
 
 
@@ -307,10 +314,16 @@
         let postIdToDelete = null; // 削除対象の投稿IDを一時的に保持
         let currentNickname = "名無しOORer"; // ニックネームの初期値
         let userFilterId = null; // 投稿絞り込み中のユーザーID
+        // ★修正: AI利用に必要な最低投稿数を1に設定
         let userPostCount = 0; // ユーザーの投稿数
         let isFirebaseInitialized = false; // Firebaseが正常に初期化されたかどうかを示すフラグ
         
-        const MIN_POSTS_FOR_AI = 3; // AI利用に必要な最低投稿数
+        const MIN_POSTS_FOR_AI = 1; // AI利用に必要な最低投稿数 (修正済み)
+        
+        // ★追加: 表示制限に関する定数と変数
+        const POSTS_INITIAL_DISPLAY = 15; // 初期表示件数
+        const POSTS_INCREMENT = 10;     // 「もっと読み込む」時の増加件数
+        let postsDisplayedCount = POSTS_INITIAL_DISPLAY; // 現在表示中の件数
 
 
         // データベースパス設定
@@ -355,6 +368,7 @@
                 return false;
             }
             if (userPostCount < MIN_POSTS_FOR_AI) {
+                // ★修正: メッセージを「1回以上」に更新
                 showMessage(`AI機能を利用するには、掲示板にあと${MIN_POSTS_FOR_AI - userPostCount}回投稿してください！`, true);
                 return false;
             }
@@ -731,7 +745,7 @@
         /**
          * 規約に同意し、掲示板を開く
          */
-        window.agreeToTerms = function() {
+        function agreeToTerms() { 
             localStorage.setItem('termsAgreed', 'true');
             document.getElementById('terms-modal').classList.add('hidden');
             
@@ -751,13 +765,16 @@
         function checkTermsAgreement() {
             const modal = document.getElementById('terms-modal');
             const mainContent = document.getElementById('main-content');
+            const agreeButton = document.getElementById('agree-terms-button'); // ★追加: ボタン要素を取得
 
             // ページロード時は常にモーダルを表示し、メインコンテンツを非表示にする
             modal.classList.remove('hidden');
             mainContent.classList.add('hidden');
             
-            // NOTE: localStorageの同意状態は、同意ボタンが押された後の処理を分岐させるためにのみ使用する。
-            // 起動時は常にモーダルを表示させることで、同意ボタンを押させる動作を実現する。
+            // ★修正: ボタンにイベントリスナーを設定
+            if (agreeButton) {
+                agreeButton.addEventListener('click', agreeToTerms);
+            }
         }
 
         // --- メイン掲示板のロード ---
@@ -934,6 +951,13 @@
             });
         }
         
+        // ★追加: もっと読み込む機能
+        window.loadMorePosts = function() {
+            postsDisplayedCount += POSTS_INCREMENT;
+            window.sortAndRenderPosts();
+            showMessage(`さらに${POSTS_INCREMENT}件の投稿を読み込みました。`, false);
+        }
+
         /**
          * 現在のソート基準、ユーザーフィルターに基づいて投稿をソート・フィルタリングし、レンダリングする
          * (グローバル関数として定義)
@@ -984,6 +1008,7 @@
          */
         window.filterByUser = function(id, name) {
             userFilterId = id;
+            postsDisplayedCount = POSTS_INITIAL_DISPLAY; // フィルタ時も初期表示に戻す
             window.sortAndRenderPosts();
             // 修正: IDではなくニックネームを表示
             showMessage(`${name}さんの投稿に絞り込みました。`, false);
@@ -995,6 +1020,7 @@
         window.clearUserFilter = function() {
             userFilterId = null;
             document.getElementById('filter-input').value = ''; // キーワード検索もクリア
+            postsDisplayedCount = POSTS_INITIAL_DISPLAY; // 解除時も初期表示に戻す
             window.sortAndRenderPosts();
             showMessage("ユーザー投稿一覧の絞り込みを解除しました。", false);
         }
@@ -1004,6 +1030,7 @@
          */
         window.handleFilter = function() {
             userFilterId = null; // キーワード検索時はユーザーIDフィルタを解除
+            postsDisplayedCount = POSTS_INITIAL_DISPLAY; // フィルタ時も初期表示に戻す
             window.sortAndRenderPosts();
             
             const filterTerm = document.getElementById('filter-input').value.trim().toLowerCase();
@@ -1020,19 +1047,40 @@
          */
         function renderPosts(postsToRender) {
             const postsContainer = document.getElementById('posts-container');
+            const loadMoreContainer = document.getElementById('load-more-container');
             postsContainer.innerHTML = ''; // 一度コンテナをクリア
+            loadMoreContainer.classList.add('hidden'); // ボタンをデフォルトで隠す
 
             if (postsToRender.length === 0) {
                 postsContainer.innerHTML = '<p class="text-center text-gray-500 p-8">該当する投稿は見つかりませんでした。</p>';
                 return;
             }
 
-            postsToRender.forEach(post => {
+            // ★修正: 表示制限を適用
+            const postsToShow = postsToRender.slice(0, postsDisplayedCount);
+            
+            postsToShow.forEach(post => {
                 const postElement = createPostElement(post.id, post);
                 postsContainer.appendChild(postElement);
                 // コメントリスナーの再設定 (postIdはpost.idに含まれている)
                 setupCommentListener(post.id);
             });
+
+            // ★修正: 「もっと読み込む」ボタンの表示制御
+            if (postsToRender.length > postsDisplayedCount) {
+                loadMoreContainer.classList.remove('hidden');
+                document.getElementById('load-more-button').textContent = `もっと読み込む (${postsDisplayedCount} / ${postsToRender.length}件)`;
+            } else if (postsToRender.length > POSTS_INITIAL_DISPLAY) {
+                 // 全て表示されたが、初期表示件数より多い場合のみ総数を表示
+                loadMoreContainer.classList.remove('hidden');
+                document.getElementById('load-more-button').textContent = `全${postsToRender.length}件の投稿を表示中です`;
+                document.getElementById('load-more-button').disabled = true;
+                document.getElementById('load-more-button').classList.replace('bg-gray-400', 'bg-gray-300');
+            } else {
+                // 初期表示件数以下またはフィルタリング後の結果が少ない場合はボタンを隠す
+                loadMoreContainer.classList.add('hidden');
+            }
+
         }
 
         // 投稿要素のDOM構築
