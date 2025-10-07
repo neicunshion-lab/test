@@ -193,67 +193,12 @@
             </div>
         </section>
         
-        <!-- AIチャットボット & クイズセクション -->
+        <!-- AIチャットボットセクション -->
         <section class="bg-white p-6 rounded-xl shadow-lg mb-8">
-            <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">🎤 OOR AIチャット & パーティクイズ (2-4人)</h2>
+            <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">🎤 OOR AIチャット</h2>
             
-            <!-- クイズエリア -->
-            <div id="quiz-area" class="mb-6 border border-gray-300 rounded-lg p-4 bg-gray-50">
-                <h3 class="text-lg font-bold mb-3 text-primary">ONE OK ROCK クイズ大会！</h3>
-                
-                <!-- ルームID管理UI -->
-                <div class="mb-4 p-3 bg-white rounded-lg border flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
-                    <label for="room-id-input" class="text-sm font-semibold text-gray-700 whitespace-nowrap flex-shrink-0">ルームID:</label>
-                    <input type="text" id="room-id-input" value="one_ok_rock_quiz" placeholder="新しいルームIDを入力" class="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-primary focus:border-primary" maxlength="20">
-                    <button onclick="changeQuizRoom()" class="bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold py-2 px-4 rounded-lg flex-shrink-0 transition duration-150">
-                        切替/作成
-                    </button>
-                </div>
-                <p class="text-xs text-gray-500 mb-2">現在のルーム: <strong id="current-room-display" class="text-gray-700">one_ok_rock_quiz</strong></p>
-                
-                <!-- プレイヤースロット -->
-                <p class="text-sm font-semibold mb-2 text-gray-700">参加者 (<span id="player-count">0</span>/4):</p>
-                <div id="player-slots" class="flex flex-wrap gap-3 mb-4 p-2 bg-white rounded-lg border">
-                    <!-- プレイヤースロットがここに表示される -->
-                </div>
-
-                <div id="quiz-status-message" class="text-center text-gray-600 mb-4 font-medium">
-                    クイズを開始するには2人以上の参加が必要です。（最大4人）
-                </div>
-
-                <div id="quiz-question-container" class="hidden">
-                    <p class="text-sm font-semibold mb-2 text-gray-700">現在の問題:</p>
-                    <div id="current-question" class="text-xl font-bold mb-4 p-3 bg-white border rounded-lg"></div>
-                    <div id="quiz-options" class="space-y-2">
-                        <!-- 選択肢がここに表示される -->
-                    </div>
-                </div>
-                
-                <!-- スコアボード -->
-                <div id="quiz-scoreboard" class="mt-6 pt-4 border-t border-gray-200">
-                    <p class="text-sm font-semibold mb-2 text-gray-700">スコアボード:</p>
-                    <div id="scoreboard-list" class="flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-600">
-                        <!-- 参加者スコアがここに表示される -->
-                        <p class="text-xs text-gray-400">クイズ開始後にスコアが表示されます。</p>
-                    </div>
-                </div>
-
-                <div id="quiz-controls" class="mt-6 flex justify-center">
-                    <button onclick="startNewQuiz()" id="start-quiz-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg transition duration-150 shadow-md" disabled>
-                        クイズを開始 (2人から)
-                    </button>
-                    <button onclick="requestNextQuestion()" id="next-question-button" class="hidden bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg transition duration-150 shadow-md">
-                        次の問題へ
-                    </button>
-                </div>
-
-                <div id="quiz-loading-message" class="hidden mt-3 text-center text-sm text-primary font-medium">
-                    AIが問題を作成中...🎸 しばらくお待ちください。
-                </div>
-            </div>
-
             <!-- AIチャットエリア -->
-            <p class="text-sm text-gray-600 mb-4 border-t pt-4">チャットボットに質問する:</p>
+            <p class="text-sm text-gray-600 mb-4 pt-4">チャットボットに質問する:</p>
             
             <div class="chat-container mb-4 border border-gray-300 rounded-lg p-3 bg-gray-50 flex flex-col-reverse" id="ai-chat-history">
                 <!-- Chat messages will be appended here -->
@@ -364,16 +309,8 @@
         let userFilterId = null; // 投稿絞り込み中のユーザーID
         let userPostCount = 0; // ユーザーの投稿数
         let isFirebaseInitialized = false; // Firebaseが正常に初期化されたかどうかを示すフラグ
-
-
-        // クイズ状態管理用変数
-        const QUIZ_COLLECTION_PATH = `/artifacts/${appId}/public/data/quiz_sessions`; 
-        let currentQuizId = 'one_ok_rock_quiz'; // 初期ルームID
-        let quizListener = null; 
-        let quizState = null; 
-        const MAX_PLAYERS = 4;
+        
         const MIN_POSTS_FOR_AI = 3; // AI利用に必要な最低投稿数
-        const MIN_PLAYERS_TO_START = 2;
 
 
         // データベースパス設定
@@ -385,7 +322,7 @@
         const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent";
         const apiKey = ""; 
         
-        // Geminiに要求するクイズJSONスキーマ
+        // クイズスキーマは削除済みのため、この定義は不要だが、コードの整合性のため残しておく
         const QUIZ_SCHEMA = {
             type: "OBJECT",
             properties: {
@@ -409,8 +346,6 @@
             if (chatForm) {
                 chatForm.addEventListener('submit', handleAiChatSubmit);
             }
-            // ルームID入力欄の初期値を設定
-            document.getElementById('room-id-input').value = currentQuizId;
         });
         
         // --- 共通のAI利用条件チェック ---
@@ -525,7 +460,7 @@
                     
                     let sources = [];
                     const groundingMetadata = candidate.groundingMetadata;
-                    if (groundingMetadata && groundingAttributions) {
+                    if (groundingMetadata && groundingMetadata.groundingAttributions) {
                         sources = groundingMetadata.groundingAttributions
                             .map(attribution => ({
                                 uri: attribution.web?.uri,
@@ -550,560 +485,7 @@
             }
         }
 
-
-        // --- クイズ機能（マルチプレイヤー） ---
         
-        /**
-         * AIにクイズ問題を生成させる (JSON形式)
-         */
-        async function generateQuizQuestion() {
-            if (!checkAICondition()) {
-                throw new Error("AI利用条件を満たしていません。");
-            }
-            const prompt = "ONE OK ROCKに関する、マニアックで面白い三択クイズを一つ生成してください。問題文、3つの選択肢、正解のインデックス（0, 1, 2のいずれか）、その問題の背景を解説する文章をJSON形式で提供してください。";
-            
-            const payload = {
-                contents: [{ parts: [{ text: prompt }] }],
-                systemInstruction: { parts: [{ text: "あなたはONE OK ROCKに関するクイズのプロデューサーです。必ず要求されたJSONスキーマに従って回答を生成してください。" }] },
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: QUIZ_SCHEMA,
-                    tools: [{ "google_search": {} }]
-                }
-            };
-            
-            try {
-                const response = await fetch(GEMINI_API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const result = await response.json();
-                const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                
-                // ★修正ポイント: JSONテキストの存在チェックとパースエラーの捕捉
-                if (!jsonText) {
-                    console.error("AIからの応答が空か、期待されるJSON構造ではありません。", result);
-                    throw new Error("AIが有効なクイズデータを生成できませんでした。");
-                }
-                
-                return JSON.parse(jsonText);
-            } catch (error) {
-                console.error("AIクイズ生成エラー:", error);
-                // JSON.parseエラーとAPIエラーの両方を捕捉
-                if (error instanceof SyntaxError) {
-                    throw new Error("AIが生成したデータ形式が不正です。");
-                } else {
-                    throw new Error(`AIがクイズを生成できませんでした: ${error.message}`);
-                }
-            }
-        }
-        
-        /**
-         * ルームIDを変更し、新しいルームに参加する (グローバル関数として定義)
-         */
-        window.changeQuizRoom = async function() {
-            if (!isFirebaseInitialized) {
-                showMessage("Firebaseが無効なため、クイズ機能は利用できません。", true);
-                return;
-            }
-            if (!isAuthReady) {
-                showMessage("認証が完了していません。", true);
-                return;
-            }
-            if (!checkAICondition()) return;
-
-            const input = document.getElementById('room-id-input');
-            const newId = input.value.trim();
-
-            if (!newId) {
-                showMessage("ルームIDを入力してください。", true);
-                return;
-            }
-            
-            // 既存のルームから退出
-            if (quizListener && currentQuizId) {
-                await leaveQuizRoom(); 
-                quizListener(); // 古いリスナーを解除
-                quizListener = null;
-            }
-
-            // 新しいルームIDを設定
-            currentQuizId = newId;
-            // input.value = newId; // UI表示はリスナー内で更新
-
-            // リスナーを設定し直して、新しいルームに参加
-            setupQuizListener(); 
-
-            showMessage(`ルームIDを「${newId}」に切り替え/作成しました。`, false);
-        }
-
-        /**
-         * クイズルームに参加する (最大4人)
-         */
-        async function joinQuizRoom() {
-            if (!isFirebaseInitialized || !isAuthReady) return;
-            // 修正: quizIdではなくcurrentQuizIdを使用
-            const quizRef = doc(db, QUIZ_COLLECTION_PATH, currentQuizId); 
-
-            try {
-                await runTransaction(db, async (transaction) => {
-                    const quizDoc = await transaction.get(quizRef);
-                    let currentQuiz = quizDoc.exists() ? quizDoc.data() : { status: 'lobby', players: {} };
-                    
-                    const players = currentQuiz.players || {};
-                    const playerCount = Object.keys(players).length;
-
-                    if (players[userId]) {
-                        // 既にいる場合、ニックネームを更新
-                        players[userId].name = currentNickname;
-                    } else if (playerCount < MAX_PLAYERS) {
-                        // 初めて参加する場合
-                        players[userId] = { 
-                            name: currentNickname, 
-                            score: 0, 
-                            joinedAt: serverTimestamp() 
-                        };
-                    } else {
-                        // 満員の場合、トランザクションを中断
-                        showMessage(`ルーム「${currentQuizId}」は満員です (最大4名)。`, true);
-                        return;
-                    }
-
-                    // ルームの状態を更新
-                    transaction.set(quizRef, {
-                        ...currentQuiz,
-                        players: players,
-                        status: currentQuiz.status === 'active' ? 'active' : 'lobby',
-                        scores: currentQuiz.scores || {} // スコアが存在しない場合は初期化
-                    }, { merge: true });
-                });
-            } catch (e) {
-                console.error("クイズルーム参加トランザクション失敗:", e);
-                // トランザクション失敗時もエラーメッセージは表示しない (頻繁に起こる可能性があるため)
-            }
-        }
-        
-        /**
-         * クイズルームから退出する
-         */
-        async function leaveQuizRoom() {
-            if (!isFirebaseInitialized || !isAuthReady) return;
-            // 修正: quizIdではなくcurrentQuizIdを使用
-            const quizRef = doc(db, QUIZ_COLLECTION_PATH, currentQuizId); 
-            
-            try {
-                await runTransaction(db, async (transaction) => {
-                    const quizDoc = await transaction.get(quizRef);
-                    if (!quizDoc.exists()) return;
-
-                    let currentQuiz = quizDoc.data();
-                    let players = currentQuiz.players || {};
-
-                    if (players[userId]) {
-                        delete players[userId];
-                    } else {
-                        return;
-                    }
-
-                    // 最後のプレイヤーが退出した場合、ドキュメントを削除してリセット
-                    if (Object.keys(players).length === 0) {
-                        transaction.delete(quizRef);
-                    } else {
-                        transaction.update(quizRef, {
-                            players: players,
-                        });
-                    }
-                });
-            } catch (e) {
-                console.error("クイズルーム退出トランザクション失敗:", e);
-            }
-        }
-        
-        // ページを閉じる前に退出処理を実行 (ベストエフォート)
-        window.addEventListener('beforeunload', leaveQuizRoom);
-
-
-        /**
-         * 新しいクイズセッションを開始する (2人以上が必要)
-         */
-        window.startNewQuiz = async function() {
-            if (!isFirebaseInitialized) {
-                showMessage("Firebaseが無効なため、クイズ機能は利用できません。", true);
-                return;
-            }
-            if (!isAuthReady || !checkAICondition()) return;
-            
-            const controlButton = document.getElementById('start-quiz-button');
-            const loading = document.getElementById('quiz-loading-message');
-            
-            controlButton.disabled = true;
-            loading.classList.remove('hidden');
-
-            try {
-                const currentPlayers = quizState ? Object.keys(quizState.players).length : 0;
-                if (currentPlayers < MIN_PLAYERS_TO_START) {
-                    showMessage(`クイズを開始するには、${MIN_PLAYERS_TO_START}人以上の参加者が必要です。現在${currentPlayers}人です。`, true);
-                    // プレイヤー数が足りない場合は、ローディングを隠してボタンを有効に戻す
-                    controlButton.disabled = false;
-                    loading.classList.add('hidden');
-                    return; 
-                }
-
-                // 1. AIに最初の問題生成を要求
-                const quizData = await generateQuizQuestion();
-                
-                // 2. Firestoreをトランザクションで初期化
-                // 修正: quizIdではなくcurrentQuizIdを使用
-                const quizRef = doc(db, QUIZ_COLLECTION_PATH, currentQuizId); 
-                
-                await runTransaction(db, async (transaction) => {
-                     const quizDoc = await transaction.get(quizRef);
-                     let players = quizDoc.exists() ? quizDoc.data().players : {};
-                     
-                     // 現在のプレイヤー全員のスコアをリセット
-                     const initialScores = {};
-                     for (const id in players) {
-                         initialScores[id] = { name: players[id].name, score: 0 };
-                     }
-
-                     transaction.set(quizRef, {
-                        status: 'active', // Game is now active
-                        question: quizData.question,
-                        options: quizData.options,
-                        correctIndex: quizData.correctIndex,
-                        explanation: quizData.explanation,
-                        questionNumber: 1,
-                        players: players, // 現在のプレイヤーを保持
-                        scores: initialScores, 
-                        answeredBy: {}, 
-                        correctAnswer: null,
-                        answeredCount: 0,
-                        timestamp: serverTimestamp()
-                    });
-                });
-                
-                showMessage("新しいクイズが開始されました！ 第1問スタート！", false);
-            } catch (error) {
-                console.error("クイズ開始エラー:", error);
-                showMessage(`クイズの開始に失敗しました: ${error.message}`, true);
-            } finally {
-                controlButton.disabled = false;
-                loading.classList.add('hidden');
-            }
-        }
-
-        /**
-         * 次の問題をリクエストする（誰でも実行可能だが、状態はFirestoreが管理）
-         */
-        window.requestNextQuestion = async function() {
-            if (!isFirebaseInitialized) {
-                showMessage("Firebaseが無効なため、クイズ機能は利用できません。", true);
-                return;
-            }
-            if (!isAuthReady || !checkAICondition() || quizState.status !== 'resolved') return; 
-            
-            const controlButton = document.getElementById('next-question-button');
-            const loading = document.getElementById('quiz-loading-message');
-            
-            controlButton.disabled = true;
-            loading.classList.remove('hidden');
-
-            try {
-                // 1. AIに次の問題生成を要求
-                const quizData = await generateQuizQuestion();
-                
-                // 2. Firestoreを更新（次の問題へ）
-                // 修正: quizIdではなくcurrentQuizIdを使用
-                const quizRef = doc(db, QUIZ_COLLECTION_PATH, currentQuizId); 
-                
-                await updateDoc(quizRef, {
-                    status: 'active',
-                    question: quizData.question,
-                    options: quizData.options,
-                    correctIndex: quizData.correctIndex,
-                    explanation: quizData.explanation,
-                    questionNumber: quizState.questionNumber + 1,
-                    // スコアとプレイヤーリストは維持
-                    answeredBy: {}, 
-                    correctAnswer: null,
-                    answeredCount: 0,
-                    timestamp: serverTimestamp()
-                });
-                
-                showMessage(`第${quizState.questionNumber + 1}問がスタートしました！`, false);
-            } catch (error) {
-                console.error("次の問題の生成エラー:", error);
-                showMessage(`次の問題の生成に失敗しました: ${error.message}`, true);
-            } finally {
-                controlButton.disabled = false;
-                loading.classList.add('hidden');
-            }
-        }
-
-        /**
-         * クイズの回答処理（最初に正解した人にポイント）
-         */
-        window.handleQuizAnswer = async function(answerIndex) {
-            if (!isFirebaseInitialized) {
-                showMessage("Firebaseが無効なため、クイズ機能は利用できません。", true);
-                return;
-            }
-            if (!isAuthReady || quizState.correctAnswer || quizState.status !== 'active') return;
-            
-            // プレイヤーとして参加しているかチェック
-            if (!quizState.players || !quizState.players[userId]) {
-                showMessage("クイズに参加していません。ルームに参加してください。", true);
-                return;
-            }
-
-            // 修正: quizIdではなくcurrentQuizIdを使用
-            const quizRef = doc(db, QUIZ_COLLECTION_PATH, currentQuizId); 
-
-            try {
-                await runTransaction(db, async (transaction) => {
-                    const quizDoc = await transaction.get(quizRef);
-                    if (!quizDoc.exists()) throw "Quiz not found";
-
-                    const currentQuiz = quizDoc.data();
-
-                    // 既に回答済みかチェック
-                    if (currentQuiz.answeredBy[userId] !== undefined) {
-                        showMessage("あなたは既にこの問題に回答済みです。", true);
-                        return;
-                    }
-
-                    const isCorrect = answerIndex === currentQuiz.correctIndex;
-                    const newAnsweredBy = { ...currentQuiz.answeredBy, [userId]: answerIndex };
-                    
-                    let newScores = currentQuiz.scores || {};
-                    let newCorrectAnswer = currentQuiz.correctAnswer;
-                    let newStatus = currentQuiz.status;
-                    
-                    if (!newScores[userId]) {
-                         newScores[userId] = { name: currentNickname, score: 0 };
-                    }
-
-                    if (isCorrect) {
-                        if (currentQuiz.correctAnswer === null) {
-                            // 最初の正解者！
-                            newCorrectAnswer = userId;
-                            newScores[userId].score += 10;
-                            newStatus = 'resolved'; 
-                            
-                            transaction.update(quizRef, {
-                                answeredBy: newAnsweredBy,
-                                scores: newScores,
-                                correctAnswer: newCorrectAnswer,
-                                status: newStatus,
-                                answeredCount: (currentQuiz.answeredCount || 0) + 1,
-                            });
-                            showMessage("🎉 正解！最初に正解しました！10点ゲット！", false);
-                        } else {
-                            // 正解だが、既に正解者がいる
-                            transaction.update(quizRef, {
-                                answeredBy: newAnsweredBy,
-                                answeredCount: (currentQuiz.answeredCount || 0) + 1,
-                            });
-                            showMessage("正解！しかし、最初に正解した人がいました。", false);
-                        }
-                    } else {
-                        // 不正解
-                        transaction.update(quizRef, {
-                            answeredBy: newAnsweredBy,
-                            answeredCount: (currentQuiz.answeredCount || 0) + 1,
-                        });
-                        showMessage("残念、不正解です...。", true);
-                    }
-                });
-            } catch (e) {
-                console.error("クイズ回答トランザクション失敗:", e);
-                showMessage("クイズの回答処理中にエラーが発生しました。", true);
-            }
-        }
-
-
-        /**
-         * クイズ状態のリアルタイムリスナー設定
-         */
-        function setupQuizListener() {
-            if (!isFirebaseInitialized) return; // Firebaseが無効ならリスナーを設定しない
-            
-            if (quizListener) quizListener(); // 既存のリスナーを解除
-
-            // 修正: quizIdではなくcurrentQuizIdを使用
-            const quizRef = doc(db, QUIZ_COLLECTION_PATH, currentQuizId);
-            
-            // ユーザーがルームを開いたとき、自動で参加を試みる
-            if (isAuthReady) {
-                joinQuizRoom(); 
-            }
-
-            quizListener = onSnapshot(quizRef, (doc) => {
-                // UIに現在のルームIDを反映
-                document.getElementById('current-room-display').textContent = currentQuizId;
-                document.getElementById('room-id-input').value = currentQuizId;
-
-                if (doc.exists()) {
-                    quizState = doc.data();
-                    renderQuizUI(quizState);
-                } else {
-                    // ドキュメントが存在しない場合 (誰もいない場合や削除された場合)
-                    quizState = { status: 'lobby', players: {} };
-                    renderQuizUI(quizState); 
-                    // 削除された場合、自動で再参加を試みる
-                    if (isAuthReady) joinQuizRoom(); 
-                }
-            }, (error) => {
-                console.error("クイズリスナーエラー:", error);
-                quizState = { status: 'error', players: {} };
-                renderQuizUI(quizState);
-            });
-        }
-        
-        /**
-         * クイズUIの描画処理
-         */
-        function renderQuizUI(state) {
-            const statusMessage = document.getElementById('quiz-status-message');
-            const questionContainer = document.getElementById('quiz-question-container');
-            const quizOptions = document.getElementById('quiz-options');
-            const startButton = document.getElementById('start-quiz-button');
-            const nextButton = document.getElementById('next-question-button');
-            const currentQuestion = document.getElementById('current-question');
-            const scoreboardList = document.getElementById('scoreboard-list');
-            const playerSlots = document.getElementById('player-slots');
-            const playerCountSpan = document.getElementById('player-count');
-
-            // --- プレイヤーとロビーの状態を更新 ---
-            const players = state.players || {};
-            const playerIds = Object.keys(players);
-            const playerCount = playerIds.length;
-            
-            playerCountSpan.textContent = playerCount;
-            playerSlots.innerHTML = '';
-            
-            // プレイヤースロットの描画
-            for (let i = 0; i < MAX_PLAYERS; i++) {
-                const name = players[playerIds[i]] ? players[playerIds[i]].name : null;
-                const playerDiv = document.createElement('div');
-                playerDiv.className = 'flex items-center space-x-1 p-1 rounded-full text-xs font-semibold';
-                
-                if (name) {
-                    // 自分のニックネームは強調
-                    const isMe = playerIds[i] === userId;
-                    playerDiv.innerHTML = `<span class="bg-green-500 w-2 h-2 rounded-full"></span><span class="${isMe ? 'text-primary' : 'text-gray-700'}">${name}${isMe ? ' (あなた)' : ''}</span>`;
-                } else {
-                    playerDiv.innerHTML = `<span class="bg-gray-300 w-2 h-2 rounded-full"></span><span class="text-gray-500">空き(${i + 1}人目)</span>`;
-                }
-                playerSlots.appendChild(playerDiv);
-            }
-
-            // --- コントロールボタンとメッセージの管理 ---
-
-            if (state.status === 'lobby' || state.status === 'finished' || state.status === 'error' || !state.status) {
-                // ロビー状態
-                questionContainer.classList.add('hidden');
-                startButton.classList.remove('hidden');
-                nextButton.classList.add('hidden');
-                
-                if (!isFirebaseInitialized) {
-                    startButton.disabled = true;
-                    statusMessage.textContent = "Firebaseが無効なため、クイズは利用できません。";
-                } else if (playerCount < MIN_PLAYERS_TO_START) {
-                    startButton.disabled = true;
-                    statusMessage.textContent = `クイズを開始するには、あと${MIN_PLAYERS_TO_START - playerCount}人が必要です。（最大${MAX_PLAYERS}人）`;
-                } else {
-                    startButton.disabled = false;
-                    statusMessage.textContent = `参加者：${playerCount}人。クイズを開始できます！`;
-                }
-                
-                scoreboardList.innerHTML = '<p class="text-xs text-gray-400">クイズ開始後にスコアが表示されます。</p>';
-                if (state.status === 'finished') {
-                    statusMessage.textContent = "ゲーム終了！スコアボードを確認してください。";
-                }
-                return;
-            }
-            
-            // --- クイズアクティブ時 ---
-            questionContainer.classList.remove('hidden');
-            startButton.classList.add('hidden');
-
-            currentQuestion.textContent = `Q${state.questionNumber}: ${state.question}`;
-            quizOptions.innerHTML = '';
-            
-            const hasAnswered = state.answeredBy && state.answeredBy[userId] !== undefined;
-            const isResolved = state.status === 'resolved';
-            
-            // --- 選択肢の描画 ---
-            state.options.forEach((option, index) => {
-                const optionButton = document.createElement('button');
-                optionButton.textContent = `${index + 1}. ${option}`;
-                optionButton.className = `quiz-option w-full p-3 text-left rounded-lg transition duration-150 border font-medium whitespace-normal ${isResolved ? 'cursor-default' : 'cursor-pointer'}`;
-                
-                // 回答済み、または解決済み、またはプレイヤーでなければ無効化
-                optionButton.disabled = hasAnswered || isResolved || !players[userId]; 
-                
-                optionButton.onclick = () => window.handleQuizAnswer(index);
-                
-                // --- 結果表示 ---
-                if (isResolved) {
-                    if (index === state.correctIndex) {
-                        optionButton.className += ' bg-green-200 text-green-800 border-green-400';
-                        optionButton.textContent += ' 🎉正解';
-                    } else if (hasAnswered && index === state.answeredBy[userId]) {
-                        optionButton.className += ' bg-red-200 text-red-800 border-red-400';
-                        optionButton.textContent += ' ❌あなたの回答';
-                    } else {
-                        optionButton.className += ' bg-white text-gray-700 border-gray-300';
-                    }
-                } else if (hasAnswered && index === state.answeredBy[userId]) {
-                     // 回答済みの選択肢（解答中）
-                    optionButton.className += ' bg-yellow-100 text-gray-700 border-yellow-300';
-                } else {
-                    optionButton.className += ' bg-white text-gray-700 border-gray-300';
-                }
-                
-                quizOptions.appendChild(optionButton);
-            });
-            
-            // --- ステータスとコントロールボタンの更新 ---
-            if (isResolved) {
-                const correctUserName = state.scores[state.correctAnswer] ? state.scores[state.correctAnswer].name : '不明なユーザー';
-                statusMessage.innerHTML = `✅ **正解発表！** 正解は**${state.correctIndex + 1}番**でした。<br>最初に正解したのは **${correctUserName}** さん！<br>
-                                    <span class="text-sm mt-2 block">${state.explanation}</span>`;
-                // 次の問題へボタンを表示
-                nextButton.classList.remove('hidden');
-            } else {
-                statusMessage.textContent = `第${state.questionNumber}問に回答してください！ (${state.answeredCount}人回答済み)`;
-                nextButton.classList.add('hidden');
-            }
-            
-            // --- スコアボードの更新 ---
-            scoreboardList.innerHTML = '';
-            
-            const sortedScores = Object.values(state.scores || {}).sort((a, b) => b.score - a.score);
-            
-            if (sortedScores.length > 0) {
-                sortedScores.forEach((player, index) => {
-                    const scoreItem = document.createElement('p');
-                    // 1位の色を強調
-                    const isTop = index === 0 && player.score > 0;
-                    scoreItem.className = `font-bold p-1 rounded-md text-sm ${isTop ? 'text-primary' : 'text-gray-700'}`;
-                    scoreItem.innerHTML = `${isTop ? '🏆' : ''} ${player.name}: <span class="text-primary">${player.score}点</span>`;
-                    scoreboardList.appendChild(scoreItem);
-                });
-            } else {
-                scoreboardList.innerHTML = '<p class="text-xs text-gray-400">参加者がいません。</p>';
-            }
-        }
-
-
         // --- ユーザー情報（ニックネーム, 投稿数）関連 ---
         
         async function fetchNickname() {
@@ -1119,10 +501,7 @@
                 console.error("ニックネーム取得エラー:", error);
             }
             updateUserInfoDisplay();
-            // ★修正ポイント2: ニックネームが確定したら、クイズルームに参加し直す
-            if (isAuthReady) {
-                joinQuizRoom(); 
-            }
+            // クイズ機能削除のため、joinQuizRoomの呼び出しは不要
         }
 
         async function saveNickname(e) {
@@ -1152,8 +531,6 @@
                 hideNicknameModal();
                 showMessage(`ニックネームを「${newNickname}」に設定しました。`, false);
                 
-                // ニックネーム変更後、クイズルームの参加情報を更新
-                joinQuizRoom(); 
             } catch (error) {
                 console.error("ニックネーム保存エラー:", error);
                 showMessage("ニックネームの保存に失敗しました。", true);
@@ -1163,6 +540,7 @@
         async function getUserPostCount() {
             if (!isFirebaseInitialized || !userId || !isAuthReady) {
                 userPostCount = 0;
+                document.getElementById('user-post-count').textContent = userPostCount; // ★修正: 初期化前でも0を表示
                 return;
             }
             try {
@@ -1306,34 +684,19 @@
                         userId = user.uid;
                         authSuccessful = true;
                     } else {
-                        // 1. カスタム認証トークンでのサインインを試みる (GitHub Pagesでは失敗する可能性が高いが、ログは残す)
-                        if (initialAuthToken) {
-                            try {
-                                await signInWithCustomToken(auth, initialAuthToken);
-                                userId = auth.currentUser.uid;
-                                authSuccessful = true;
-                            } catch (tokenError) {
-                                console.error("カスタム認証トークンエラー (スキップ):", tokenError);
-                                // エラーがあっても処理は継続
-                            }
-                        }
-                        
-                        // 2. 匿名認証でのサインインを試みる (これが匿名掲示板の主要な認証方法)
-                        if (!authSuccessful) {
-                            try {
-                                const anonUser = await signInAnonymously(auth);
-                                userId = anonUser.user.uid;
-                                authSuccessful = true;
-                            } catch (anonError) {
-                                console.error("匿名認証エラー:", anonError);
-                                
-                                // 致命的な設定エラーが発生した場合、認証を完全にスキップして警告を表示
-                                if (anonError.code === 'auth/configuration-not-found' || anonError.code === 'auth/operation-not-allowed') {
-                                    showMessage("致命的な認証設定エラーが発生しました。Firebase Consoleで匿名認証を有効化してください。", true);
-                                    // isAuthReadyはtrueにするが、authSuccessfulはfalseのまま
-                                } else {
-                                    showMessage("警告: 認証中に予期せぬエラーが発生しました。", true);
-                                }
+                        // 匿名認証でのサインインを試みる (これが匿名掲示板の主要な認証方法)
+                        try {
+                            const anonUser = await signInAnonymously(auth);
+                            userId = anonUser.user.uid;
+                            authSuccessful = true;
+                        } catch (anonError) {
+                            console.error("匿名認証エラー:", anonError);
+                            
+                            // 致命的な設定エラーが発生した場合、認証を完全にスキップして警告を表示
+                            if (anonError.code === 'auth/configuration-not-found' || anonError.code === 'auth/operation-not-allowed') {
+                                showMessage("致命的な認証設定エラーが発生しました。Firebase Consoleで匿名認証を有効化してください。", true);
+                            } else {
+                                showMessage("警告: 認証中に予期せぬエラーが発生しました。", true);
                             }
                         }
                     }
@@ -1346,12 +709,13 @@
                         await getUserPostCount(); 
                     } else {
                         // 認証失敗時も、掲示板UIロードに進む
-                        console.warn("認証に失敗したため、投稿、いいね、クイズ機能は無効化されます。");
+                        console.warn("認証に失敗したため、投稿、いいね、AI機能は無効化されます。");
                     }
 
+                    // ★修正: 規約同意ロジックをinitializeFirebaseから削除し、checkTermsAgreement()に一元化
                     if (localStorage.getItem('termsAgreed') === 'true') {
-                        loadBoardDisplay(); 
-                        loadBoardData(); // 掲示板データのロードに進む (Firebase無効の場合はリスナーが警告を出す)
+                         // 同意済みであっても、即座に loadBoardDisplay/loadBoardData は呼ばず、
+                         // DOMContentLoaded後にcheckTermsAgreement()で処理を制御する
                     }
                 });
 
@@ -1364,26 +728,36 @@
 
         // --- 利用規約の処理 ---
 
+        /**
+         * 規約に同意し、掲示板を開く
+         */
         window.agreeToTerms = function() {
             localStorage.setItem('termsAgreed', 'true');
             document.getElementById('terms-modal').classList.add('hidden');
             
             loadBoardDisplay(); 
 
-            // 修正: isAuthReadyがtrueになっていれば、ここでデータをロード
+            // 認証が完了しているか確認し、データロードを開始
             if (isAuthReady) {
                 loadBoardData(); 
             } else {
-                showMessage("認証中です。しばらくお待ちください。データがロードされるまで投稿の閲覧・投稿はできません。", false);
+                showMessage("認証中です。データがロードされるまで少々お待ちください。", false);
             }
         }
 
+        /**
+         * 規約モーダルを表示し、DOMの状態を制御する
+         */
         function checkTermsAgreement() {
-            if (localStorage.getItem('termsAgreed') === 'true') {
-                document.getElementById('terms-modal').classList.add('hidden');
-            } else {
-                document.getElementById('terms-modal').classList.remove('hidden');
-            }
+            const modal = document.getElementById('terms-modal');
+            const mainContent = document.getElementById('main-content');
+
+            // ページロード時は常にモーダルを表示し、メインコンテンツを非表示にする
+            modal.classList.remove('hidden');
+            mainContent.classList.add('hidden');
+            
+            // NOTE: localStorageの同意状態は、同意ボタンが押された後の処理を分岐させるためにのみ使用する。
+            // 起動時は常にモーダルを表示させることで、同意ボタンを押させる動作を実現する。
         }
 
         // --- メイン掲示板のロード ---
@@ -1409,7 +783,6 @@
             // 認証チェックを確実にするため、ここで再チェック
             if (!isAuthReady) return; 
             setupPostListener();
-            setupQuizListener();
         }
 
 
@@ -1733,7 +1106,7 @@
             `;
             
             // コメントフォームのイベントリスナーを設定
-            if (isDbActive) {
+            if (isDbActive) { // ★修正: isDbActiveチェックを追加
                 postDiv.querySelector('.comment-form').addEventListener('submit', handleCommentSubmit);
             }
 
@@ -2112,7 +1485,8 @@
 
         // アプリケーション起動
         window.onload = initializeFirebase;
-        checkTermsAgreement();
+        // ★修正: DOMContentLoaded後に規約チェック関数を呼び出すように変更
+        document.addEventListener('DOMContentLoaded', checkTermsAgreement);
 
     </script>
 </body>
