@@ -11,7 +11,7 @@
         :root {
             --color-primary: #FF5050; /* デフォルト: Ambitions */
             --color-secondary: #1A2035;
-            --color-background: #f7f7f7;
+            --color-background: #f7f3f3;
         }
 
         /* カスタムスタイル */
@@ -328,9 +328,10 @@
 
     <!-- Firebase SDKs -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, query, orderBy, limit, addDoc, onSnapshot, serverTimestamp, doc, updateDoc, increment, setLogLevel, deleteDoc, arrayUnion, arrayRemove, getDoc, setDoc, where, getDocs, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // ★修正: SDKのバージョンをすべて揃える (12.3.0に統一)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
+        import { getFirestore, collection, query, orderBy, limit, addDoc, onSnapshot, serverTimestamp, doc, updateDoc, increment, setLogLevel, deleteDoc, arrayUnion, arrayRemove, getDoc, setDoc, where, getDocs, runTransaction } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore.js";
 
         // --- ↓↓【修正: ユーザーが提供した設定を直接挿入】↓↓ ---
         const USER_PROVIDED_FIREBASE_CONFIG = {
@@ -524,7 +525,7 @@
                     
                     let sources = [];
                     const groundingMetadata = candidate.groundingMetadata;
-                    if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                    if (groundingMetadata && groundingAttributions) {
                         sources = groundingMetadata.groundingAttributions
                             .map(attribution => ({
                                 uri: attribution.web?.uri,
@@ -556,6 +557,9 @@
          * AIにクイズ問題を生成させる (JSON形式)
          */
         async function generateQuizQuestion() {
+            if (!checkAICondition()) {
+                throw new Error("AI利用条件を満たしていません。");
+            }
             const prompt = "ONE OK ROCKに関する、マニアックで面白い三択クイズを一つ生成してください。問題文、3つの選択肢、正解のインデックス（0, 1, 2のいずれか）、その問題の背景を解説する文章をJSON形式で提供してください。";
             
             const payload = {
@@ -581,10 +585,22 @@
                 
                 const result = await response.json();
                 const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                // ★修正ポイント: JSONテキストの存在チェックとパースエラーの捕捉
+                if (!jsonText) {
+                    console.error("AIからの応答が空か、期待されるJSON構造ではありません。", result);
+                    throw new Error("AIが有効なクイズデータを生成できませんでした。");
+                }
+                
                 return JSON.parse(jsonText);
             } catch (error) {
                 console.error("AIクイズ生成エラー:", error);
-                throw new Error("AIがクイズを生成できませんでした。");
+                // JSON.parseエラーとAPIエラーの両方を捕捉
+                if (error instanceof SyntaxError) {
+                    throw new Error("AIが生成したデータ形式が不正です。");
+                } else {
+                    throw new Error(`AIがクイズを生成できませんでした: ${error.message}`);
+                }
             }
         }
         
@@ -733,7 +749,10 @@
                 const currentPlayers = quizState ? Object.keys(quizState.players).length : 0;
                 if (currentPlayers < MIN_PLAYERS_TO_START) {
                     showMessage(`クイズを開始するには、${MIN_PLAYERS_TO_START}人以上の参加者が必要です。現在${currentPlayers}人です。`, true);
-                    return; // プレイヤー数が不足
+                    // プレイヤー数が足りない場合は、ローディングを隠してボタンを有効に戻す
+                    controlButton.disabled = false;
+                    loading.classList.add('hidden');
+                    return; 
                 }
 
                 // 1. AIに最初の問題生成を要求
@@ -1096,6 +1115,7 @@
                     currentNickname = userDoc.data().nickname;
                 }
             } catch (error) {
+                // Cloud Firestore API not used... が出る可能性が高い
                 console.error("ニックネーム取得エラー:", error);
             }
             updateUserInfoDisplay();
@@ -1272,7 +1292,7 @@
             try {
                 // setLogLevel('debug');
 
-                // ★修正1: 設定が提供されたため、直接初期化
+                // Firebase初期化
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
@@ -1280,33 +1300,63 @@
 
                 // onAuthStateChangedが認証状態の変更を待ち、処理を行う
                 onAuthStateChanged(auth, async (user) => {
+                    let authSuccessful = false;
+                    
                     if (user) {
                         userId = user.uid;
+                        authSuccessful = true;
                     } else {
-                        const anonUser = await signInAnonymously(auth);
-                        userId = anonUser.user.uid;
+                        // 1. カスタム認証トークンでのサインインを試みる (GitHub Pagesでは失敗する可能性が高いが、ログは残す)
+                        if (initialAuthToken) {
+                            try {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                                userId = auth.currentUser.uid;
+                                authSuccessful = true;
+                            } catch (tokenError) {
+                                console.error("カスタム認証トークンエラー (スキップ):", tokenError);
+                                // エラーがあっても処理は継続
+                            }
+                        }
+                        
+                        // 2. 匿名認証でのサインインを試みる (これが匿名掲示板の主要な認証方法)
+                        if (!authSuccessful) {
+                            try {
+                                const anonUser = await signInAnonymously(auth);
+                                userId = anonUser.user.uid;
+                                authSuccessful = true;
+                            } catch (anonError) {
+                                console.error("匿名認証エラー:", anonError);
+                                
+                                // 致命的な設定エラーが発生した場合、認証を完全にスキップして警告を表示
+                                if (anonError.code === 'auth/configuration-not-found' || anonError.code === 'auth/operation-not-allowed') {
+                                    showMessage("致命的な認証設定エラーが発生しました。Firebase Consoleで匿名認証を有効化してください。", true);
+                                    // isAuthReadyはtrueにするが、authSuccessfulはfalseのまま
+                                } else {
+                                    showMessage("警告: 認証中に予期せぬエラーが発生しました。", true);
+                                }
+                            }
+                        }
                     }
 
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                        userId = auth.currentUser.uid;
+                    isAuthReady = true; // 認証試行完了（UIロードに進むフラグ）
+                    
+                    // 認証成功時（authSuccessfulがtrue）のみ、データベース依存機能を進める
+                    if (authSuccessful) {
+                        await fetchNickname();
+                        await getUserPostCount(); 
+                    } else {
+                        // 認証失敗時も、掲示板UIロードに進む
+                        console.warn("認証に失敗したため、投稿、いいね、クイズ機能は無効化されます。");
                     }
 
-                    isAuthReady = true; // 認証完了
-                    
-                    // 認証完了後にニックネームをロード (クイズルーム参加のため、データロードより前に実行)
-                    await fetchNickname();
-                    
-                    // 投稿数を更新
-                    await getUserPostCount(); 
-                    
                     if (localStorage.getItem('termsAgreed') === 'true') {
                         loadBoardDisplay(); 
-                        loadBoardData(); // 掲示板データのロードも認証完了後に行う
+                        loadBoardData(); // 掲示板データのロードに進む (Firebase無効の場合はリスナーが警告を出す)
                     }
                 });
 
             } catch (error) {
+                // Firebase初期化自体が失敗した場合
                 console.error("Firebaseの初期化中にエラーが発生しました:", error);
                 showMessage(`初期化エラーが発生しました: ${error.message}`, true);
             }
