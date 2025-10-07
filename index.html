@@ -172,8 +172,11 @@
             <h1 class="text-4xl font-extrabold text-primary tracking-wider">ONE OK ROCK 🎸 FAN BOARD</h1>
             <p class="text-gray-600 mt-1">あなたのOORer愛を自由に語りましょう！</p>
             
-            <div id="user-info-area" class="text-xs text-gray-500 mt-2 p-1 bg-gray-100 rounded-lg inline-block flex items-center justify-center space-x-2">
+            <div id="user-info-area" class="text-xs text-gray-500 mt-2 p-1 bg-gray-100 rounded-lg inline-block flex items-center justify-center space-x-4">
                 <span id="user-info">ID: (読み込み中)</span>
+                <div id="db-status-indicator" class="flex items-center space-x-1 font-medium">
+                    <!-- DB接続状態インジケーター -->
+                </div>
                 <button onclick="showNicknameModal()" class="text-blue-500 hover:text-blue-700 font-medium py-1 px-2 rounded-lg transition duration-150 border border-blue-200">
                     ニックネーム設定
                 </button>
@@ -324,6 +327,9 @@
         const POSTS_INITIAL_DISPLAY = 15; // 初期表示件数
         const POSTS_INCREMENT = 10;     // 「もっと読み込む」時の増加件数
         let postsDisplayedCount = POSTS_INITIAL_DISPLAY; // 現在表示中の件数
+        
+        // ★追加: コメント表示制限に関する定数
+        const COMMENTS_INITIAL_DISPLAY = 5; // 初期表示件数
 
 
         // データベースパス設定
@@ -676,11 +682,42 @@
         }
 
         // --- 初期化と認証 ---
+        
+        /**
+         * DB接続状態インジケーターを更新
+         * @param {string} status - 'waiting', 'connected', 'error'
+         */
+        function updateDbStatusIndicator(status) {
+            const indicator = document.getElementById('db-status-indicator');
+            if (!indicator) return;
+
+            let iconHtml;
+            let statusText;
+            let colorClass;
+
+            if (status === 'connected') {
+                iconHtml = '<span class="inline-block w-2.5 h-2.5 bg-green-500 rounded-full"></span>';
+                statusText = 'DB接続中';
+                colorClass = 'text-green-600';
+            } else if (status === 'error') {
+                iconHtml = '<span class="inline-block w-2.5 h-2.5 bg-red-500 rounded-full"></span>';
+                statusText = 'DB機能無効';
+                colorClass = 'text-red-600';
+            } else { // waiting
+                iconHtml = '<span class="inline-block w-2.5 h-2.5 bg-yellow-500 rounded-full animate-pulse"></span>';
+                statusText = '接続待機中';
+                colorClass = 'text-yellow-600';
+            }
+            
+            indicator.className = `flex items-center space-x-1 font-medium ${colorClass}`;
+            indicator.innerHTML = `${iconHtml} <span>${statusText}</span>`;
+        }
 
         async function initializeFirebase() {
             // テーマを最初に適用
             applyDailyTheme(); 
-            
+            updateDbStatusIndicator('waiting'); // DB状態を待機中に設定
+
             try {
                 // setLogLevel('debug');
 
@@ -689,6 +726,7 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
                 isFirebaseInitialized = true; // DB接続可能フラグをtrueに設定
+                updateDbStatusIndicator('connected'); // DB接続成功
 
                 // onAuthStateChangedが認証状態の変更を待ち、処理を行う
                 onAuthStateChanged(auth, async (user) => {
@@ -705,6 +743,7 @@
                             authSuccessful = true;
                         } catch (anonError) {
                             console.error("匿名認証エラー:", anonError);
+                            updateDbStatusIndicator('error'); // 認証エラーは致命的
                             
                             // 致命的な設定エラーが発生した場合、認証を完全にスキップして警告を表示
                             if (anonError.code === 'auth/configuration-not-found' || anonError.code === 'auth/operation-not-allowed') {
@@ -737,6 +776,8 @@
                 // Firebase初期化自体が失敗した場合
                 console.error("Firebaseの初期化中にエラーが発生しました:", error);
                 showMessage(`初期化エラーが発生しました: ${error.message}`, true);
+                isFirebaseInitialized = false;
+                updateDbStatusIndicator('error');
             }
         }
 
@@ -1142,6 +1183,13 @@
                         <!-- コメントがここに表示されます -->
                     </div>
                     
+                    <!-- コメントトグルボタンコンテナ -->
+                    <div id="comment-toggle-container-${postId}" class="text-center mb-3 hidden">
+                        <button id="comment-toggle-button-${postId}" onclick="window.toggleComments('${postId}')" class="text-sm text-blue-500 hover:text-blue-700 font-medium transition duration-150">
+                            すべてのコメントを表示
+                        </button>
+                    </div>
+
                     <!-- トップレベルコメント投稿フォーム -->
                     <form class="comment-form flex" data-post-id="${postId}" data-parent-id="">
                         <input type="text" placeholder="${isDbActive ? 'コメントを入力...' : 'DB無効のためコメント不可'}" class="comment-input w-full p-2 border border-gray-300 rounded-l-lg text-sm focus:ring-primary focus:border-primary" required maxlength="500" ${isDbActive ? '' : 'disabled'}>
@@ -1402,6 +1450,10 @@
                     if (replyFormContainer) replyFormContainer.innerHTML = ''; 
                 }
                 showMessage("コメントを投稿しました。");
+                
+                // ★追加: コメント投稿後、全表示モードに切り替える
+                window.toggleComments(postId, true);
+
             } catch (error) {
                 console.error("コメント投稿エラー:", error);
                 showMessage("コメントの投稿に失敗しました。", true);
@@ -1442,6 +1494,30 @@
             container.querySelector('.comment-input').focus();
         }
 
+        // コメントの表示状態を保持するマップ
+        const commentDisplayStates = {}; // {postId: boolean (true: 全表示, false: 制限表示)}
+        
+        /**
+         * コメントの表示/非表示を切り替える (グローバル関数として定義)
+         * @param {string} postId - 投稿ID
+         * @param {boolean} [forceShow=false] - 強制的に表示モードに切り替えるか
+         */
+        window.toggleComments = function(postId, forceShow = false) {
+            const currentState = commentDisplayStates[postId] || false;
+            const newState = forceShow ? true : !currentState;
+            commentDisplayStates[postId] = newState;
+            
+            // onSnapshot内でrenderComments関数を呼び出すことで、描画を更新
+            // onSnapshotがコメントデータを保持しているので、リスナーから再描画を依頼する
+            const postElement = document.getElementById(`post-${postId}`);
+            if (postElement) {
+                // postElement内に一時的にデータを保持し、renderCommentsに渡す
+                const commentsData = postElement.commentsData || [];
+                renderComments(postId, commentsData);
+            }
+        }
+
+
         function setupCommentListener(postId) {
             if (!isFirebaseInitialized) return; // Firebaseが無効ならリスナーを設定しない
 
@@ -1457,40 +1533,95 @@
                 snapshot.forEach(doc => {
                     commentsData.push({ id: doc.id, ...doc.data() });
                 });
+                
+                // ★追加: 投稿要素にコメントデータを一時的に保持
+                const postElement = document.getElementById(`post-${postId}`);
+                if (postElement) {
+                    postElement.commentsData = commentsData;
+                }
 
                 commentCountSpan.textContent = commentsData.length;
                 
-                // コメントを階層化
-                const topLevelComments = commentsData.filter(c => !c.parentId);
-                const nestedComments = {};
-                commentsData.forEach(c => {
-                    if (c.parentId) {
-                        if (!nestedComments[c.parentId]) {
-                            nestedComments[c.parentId] = [];
-                        }
-                        nestedComments[c.parentId].push(c);
-                    }
-                });
+                // コメントの描画を分離した関数に任せる
+                renderComments(postId, commentsData);
                 
-                commentsList.innerHTML = '';
-
-                // トップレベルコメントと返信を描画
-                topLevelComments.forEach(comment => {
-                    const commentElement = createCommentElement(comment, postId);
-                    commentsList.appendChild(commentElement);
-                    
-                    const replies = nestedComments[comment.id] || [];
-                    replies.forEach(reply => {
-                        const replyElement = createCommentElement(reply, postId, true); // trueでインデント
-                        commentsList.appendChild(replyElement);
-                    });
-                });
-
             }, (error) => {
                 console.error(`コメント取得エラー (Post ID: ${postId}):`, error);
                 commentsList.innerHTML = `<p class="text-xs text-red-400">コメントの読み込みエラー。</p>`;
             });
         }
+        
+        /**
+         * コメントを実際に描画する関数（トグル機能に対応）
+         */
+        function renderComments(postId, commentsData) {
+            const commentsList = document.getElementById(`comments-list-${postId}`);
+            const toggleContainer = document.getElementById(`comment-toggle-container-${postId}`);
+            const toggleButton = document.getElementById(`comment-toggle-button-${postId}`);
+            
+            if (!commentsList || !toggleContainer || !toggleButton) return;
+
+            // コメントを階層化
+            const topLevelComments = commentsData.filter(c => !c.parentId);
+            const nestedComments = {};
+            commentsData.forEach(c => {
+                if (c.parentId) {
+                    if (!nestedComments[c.parentId]) {
+                        nestedComments[c.parentId] = [];
+                    }
+                    nestedComments[c.parentId].push(c);
+                }
+            });
+
+            // 表示するコメントを決定
+            const isFullDisplay = commentDisplayStates[postId];
+            let commentsToShow = [];
+            
+            // トップレベルコメントと返信を結合し、表示順を決定
+            const allFlattenedComments = [];
+            topLevelComments.forEach(comment => {
+                allFlattenedComments.push(comment);
+                const replies = nestedComments[comment.id] || [];
+                // 返信はコメント投稿日時順にソートする (firestoreのクエリはasc)
+                replies.sort((a, b) => (a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : 0) - (b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : 0));
+                replies.forEach(reply => allFlattenedComments.push(reply));
+            });
+            
+            // 投稿日時が新しい順に並べ替える (ここでは投稿の逆順、つまり配列の末尾5件を取得する)
+            // コメントはタイムスタンプ順（asc）で取得されるため、最新は配列の末尾にある
+            
+            if (isFullDisplay || allFlattenedComments.length <= COMMENTS_INITIAL_DISPLAY) {
+                commentsToShow = allFlattenedComments;
+            } else {
+                // 最新5件（+その返信）を表示
+                commentsToShow = allFlattenedComments.slice(Math.max(0, allFlattenedComments.length - COMMENTS_INITIAL_DISPLAY));
+            }
+            
+            commentsList.innerHTML = '';
+
+            // コメントを描画
+            commentsToShow.forEach(comment => {
+                const commentElement = createCommentElement(comment, postId, comment.parentId !== null);
+                commentsList.appendChild(commentElement);
+            });
+            
+            // トグルボタンのテキストを更新
+            if (commentsData.length > COMMENTS_INITIAL_DISPLAY) {
+                toggleContainer.classList.remove('hidden');
+                if (isFullDisplay) {
+                    toggleButton.textContent = '一部のコメントを非表示にする';
+                    // 全表示モードでは、初期表示に戻るためのボタンを常に有効にする
+                    toggleButton.disabled = false;
+                } else {
+                    const hiddenCount = allFlattenedComments.length - COMMENTS_INITIAL_DISPLAY;
+                    toggleButton.textContent = `すべてのコメントを表示 (${hiddenCount}件を隠す)`;
+                    toggleButton.disabled = false;
+                }
+            } else {
+                 toggleContainer.classList.add('hidden');
+            }
+        }
+
 
         // コメント要素のDOM構築
         function createCommentElement(comment, postId, isReply = false) {
@@ -1539,4 +1670,3 @@
     </script>
 </body>
 </html>
-
