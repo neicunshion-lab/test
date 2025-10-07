@@ -332,13 +332,25 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, query, orderBy, limit, addDoc, onSnapshot, serverTimestamp, doc, updateDoc, increment, setLogLevel, deleteDoc, arrayUnion, arrayRemove, getDoc, setDoc, where, getDocs, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase設定のグローバル変数を使用
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        // --- ↓↓【修正: ユーザーが提供した設定を直接挿入】↓↓ ---
+        const USER_PROVIDED_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyCDPDb0XGlnbzZCCIp1hDefC0OnoSKr05c",
+            authDomain: "one-ok-rock-5c846.firebaseapp.com",
+            projectId: "one-ok-rock-5c846",
+            storageBucket: "one-ok-rock-5c846.firebasestorage.app",
+            messagingSenderId: "376508096419",
+            appId: "1:376508096419:web:41797849eea361cee68416",
+            measurementId: "G-PDE1VGVGSF"
+        };
         
-        // ★修正1: 設定が空文字の場合にJSON.parseを試みないように安全なチェックを追加
-        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) ? JSON.parse(__firebase_config) : {};
+        // アプリケーションで使用する変数に割り当て
+        const appId = USER_PROVIDED_FIREBASE_CONFIG.appId;
+        const firebaseConfig = USER_PROVIDED_FIREBASE_CONFIG;
         
+        // __initial_auth_tokenは環境が提供するグローバル変数として残しておく
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // --- ↑↑【修正: ユーザーが提供した設定を直接挿入】↑↑ ---
+
 
         let app = null; // Firebase Appインスタンスをnullで初期化
         let db = null;   // Firestoreインスタンスをnullで初期化
@@ -1260,20 +1272,11 @@
             try {
                 // setLogLevel('debug');
 
-                // ★修正1: Firebase設定がない場合は、初期化をスキップし、フラグをfalseにする
-                if (Object.keys(firebaseConfig).length === 0) {
-                    console.error("Firebase設定が不足しているため、DB接続機能は無効化されます。");
-                    showMessage("【警告】Firebase設定が不足しているため、投稿、いいね、クイズ機能は利用できません。", true);
-                    isFirebaseInitialized = false;
-                    isAuthReady = true; // 認証不要のため、すぐに認証完了とする
-                    loadBoardDisplay(); 
-                    return; // Firebase初期化処理を終了
-                }
-
+                // ★修正1: 設定が提供されたため、直接初期化
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
-                isFirebaseInitialized = true;
+                isFirebaseInitialized = true; // DB接続可能フラグをtrueに設定
 
                 // onAuthStateChangedが認証状態の変更を待ち、処理を行う
                 onAuthStateChanged(auth, async (user) => {
