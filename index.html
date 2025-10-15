@@ -1,0 +1,644 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, collection, query, onSnapshot, orderBy, serverTimestamp } from 'firebase/firestore';
+import { Clock, MessageSquare, List, Home, Users, Camera, XCircle, CheckCircle } from 'lucide-react';
+
+// --- Firebase Global Variables (Mandatory) ---
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'senior-support-app';
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+// 修正: __initialAuthToken ではなく __initial_auth_token を参照するように修正
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+// ---------------------------------------------
+
+// --- UI Constants for Senior View (Pop Design Update) ---
+const LARGE_TEXT = 'text-2xl sm:text-3xl font-black'; // フォントを太く
+const BUTTON_PRIMARY = 'bg-pink-500 text-white rounded-2xl shadow-xl hover:bg-pink-600 transition duration-150 transform hover:scale-[1.02] active:bg-pink-700';
+const BUTTON_SECONDARY = 'bg-emerald-400 text-white rounded-2xl shadow-xl hover:bg-emerald-500 transition duration-150 transform hover:scale-[1.02] active:bg-emerald-600';
+const CARD_CLASSES = 'bg-white p-5 rounded-3xl shadow-lg border-t-4 border-pink-300'; // カードデザインのポップ化
+const INPUT_CLASSES = 'w-full p-3 border border-gray-300 rounded-xl text-lg focus:ring-pink-400 focus:border-pink-400';
+
+// --- Utility Functions ---
+const timeAgo = (timestamp) => {
+    if (!timestamp || !timestamp.seconds) return '---';
+    const seconds = timestamp.seconds;
+    const now = Date.now() / 1000;
+    const diff = now - seconds;
+
+    if (diff < 60) return `${Math.floor(diff)}秒前`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}分前`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}時間前`;
+    return `${Math.floor(diff / 86400)}日前`;
+};
+
+// ----------------------------------------------------------------------
+// --- Main Application Component ---
+// ----------------------------------------------------------------------
+
+// Firestoreのパスを生成するヘルパー関数
+const getBasePath = (appId, userId) => ['artifacts', appId, 'users', userId];
+const getProfileRef = (db, appId, userId) => doc(db, ...getBasePath(appId, userId), 'profile', 'data');
+const getInventoryCollection = (db, appId, userId) => collection(db, ...getBasePath(appId, userId), 'inventory');
+const getActivityLogCollection = (db, appId, userId) => collection(db, ...getBasePath(appId, userId), 'activityLog');
+
+
+const App = () => {
+    const [db, setDb] = useState(null);
+    const [auth, setAuth] = useState(null);
+    const [seniorId, setSeniorId] = useState(null);
+    const [authReady, setAuthReady] = useState(false);
+    const [mode, setMode] = useState('SETUP'); // 'SETUP', 'USER', 'FAMILY'
+    const [loading, setLoading] = useState(true);
+
+    const [inventory, setInventory] = useState([]);
+    const [activityLog, setActivityLog] = useState([]);
+    const [familyViewId, setFamilyViewId] = useState(''); // 家族がアクセスするID
+    const [familyName, setFamilyName] = useState('山田 太郎'); // 高齢者の名前（デモ用）
+
+    // --- 6. 共通コンポーネント (修正: 参照エラーを避けるため、早期に定義) ---
+
+    const LoadingScreen = ({ message, isError = false }) => (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-6">
+            <div className={`text-center p-8 rounded-xl shadow-2xl ${isError ? 'bg-red-100' : 'bg-white'}`}>
+                {isError ? <XCircle size={48} className="text-red-500 mx-auto mb-4" /> : <Clock size={48} className="text-pink-500 mx-auto mb-4 animate-spin" />}
+                <p className="text-xl font-medium text-gray-700">{message}</p>
+                {isError && <p className="mt-2 text-red-600 font-semibold">エラーが発生しました。</p>}
+            </div>
+        </div>
+    );
+
+    const InputGroup = ({ label, value, onChange, type = 'text', placeholder = '' }) => (
+        <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+            <input
+                type={type}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={placeholder}
+                className={INPUT_CLASSES}
+            />
+        </div>
+    );
+
+    const LogEntry = ({ log, isSenior }) => {
+        let bgColor = 'bg-gray-100';
+        let icon = <Clock size={16} className="text-gray-500 mr-2" />;
+        let textColor = 'text-gray-800';
+        let alignment = 'justify-start';
+
+        if (log.type === 'chat') {
+            bgColor = 'bg-pink-100 border border-pink-300'; // ポップカラーに変更
+            icon = <MessageSquare size={16} className="text-pink-600 mr-2" />;
+            alignment = 'justify-start';
+        } else if (log.type === 'user_chat') {
+            bgColor = 'bg-emerald-100 border border-emerald-300'; // ポップカラーに変更
+            icon = <MessageSquare size={16} className="text-emerald-600 mr-2" />;
+            alignment = 'justify-end';
+        } else if (log.type === 'photo') {
+            bgColor = 'bg-yellow-100 border border-yellow-300';
+            icon = <Camera size={16} className="text-yellow-600 mr-2" />;
+            alignment = 'justify-start';
+        } else if (log.type === 'family_order') {
+            bgColor = 'bg-blue-100 border border-blue-300';
+            icon = <Users size={16} className="text-blue-600 mr-2" />;
+            alignment = 'justify-start';
+        }
+        
+        return (
+            <div className={`flex ${alignment}`}>
+                <div className={`max-w-[80%] p-3 rounded-2xl ${bgColor} shadow-sm`}>
+                    <p className={`text-sm text-gray-500 mb-1 flex items-center ${isSenior ? 'justify-end' : 'justify-start'}`}>
+                        {icon}
+                        {log.timestamp ? timeAgo(log.timestamp) : '今'}
+                    </p>
+                    <p className={`text-base font-medium ${textColor}`}>{log.message}</p>
+                </div>
+            </div>
+        );
+    };
+
+    const InventoryTable = ({ data, isFamily = false, seniorId, db, appId }) => {
+        const deleteItem = async (itemId) => {
+            if (!seniorId || !db) return;
+            const inventoryRef = getInventoryCollection(db, appId, seniorId);
+            await setDoc(doc(inventoryRef, itemId), { isDeleted: true }, { merge: true });
+            alert('商品を削除（マーク）しました。');
+        };
+
+        const filteredData = data.filter(item => !item.isDeleted);
+
+        if (filteredData.length === 0) {
+            return <div className="p-6 bg-white rounded-3xl text-gray-500 text-center text-lg shadow-inner">登録された在庫がありません。</div>;
+        }
+
+        return (
+            <div className="overflow-x-auto bg-white rounded-3xl shadow-xl">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-pink-100">
+                        <tr>
+                            <th className="px-4 py-3 text-left text-sm font-bold text-pink-700 uppercase tracking-wider">商品</th>
+                            <th className="px-4 py-3 text-left text-sm font-bold text-pink-700 uppercase tracking-wider">在庫数</th>
+                            <th className="px-4 py-3 text-left text-sm font-bold text-pink-700 uppercase tracking-wider">次の提案まで</th>
+                            <th className="px-4 py-3 text-left text-sm font-bold text-pink-700 uppercase tracking-wider">最終更新</th>
+                            {!isFamily && <th className="px-4 py-3 text-left text-sm font-bold text-pink-700 uppercase tracking-wider">操作</th>}
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-100">
+                        {filteredData.map(item => (
+                            <tr key={item.id} className={item.estimatedDaysLeft < 10 ? 'bg-red-50/70' : ''}>
+                                <td className="px-4 py-4 whitespace-nowrap text-lg font-medium text-gray-900 flex items-center">
+                                    <div className="h-10 w-10 bg-emerald-200 rounded-lg mr-3 flex items-center justify-center text-sm font-black text-emerald-800 shadow-inner">
+                                        P
+                                    </div>
+                                    {item.name}
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap">
+                                    <span className="text-xl font-extrabold text-pink-600">{item.currentStock}</span> 個
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap">
+                                    <span className={`text-xl font-extrabold ${item.estimatedDaysLeft < 10 ? 'text-red-500' : 'text-emerald-600'}`}>
+                                        {item.estimatedDaysLeft}
+                                    </span> 日
+                                </td>
+                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {timeAgo(item.lastUpdated)}
+                                </td>
+                                {!isFamily && (
+                                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
+                                        <button
+                                            onClick={() => deleteItem(item.id)}
+                                            className="text-red-500 hover:text-red-700 transition font-bold"
+                                        >
+                                            <XCircle size={20} className="inline mr-1" />削除
+                                        </button>
+                                    </td>
+                                )}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    };
+
+
+    // 1. Firebase初期化と認証
+    useEffect(() => {
+        if (!firebaseConfig) {
+            console.error("Firebase config is missing.");
+            setLoading(false);
+            return;
+        }
+
+        try {
+            const app = initializeApp(firebaseConfig);
+            const firestore = getFirestore(app);
+            const authInstance = getAuth(app);
+            setDb(firestore);
+            setAuth(authInstance);
+
+            const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
+                if (user) {
+                    const currentSeniorId = user.uid;
+                    setSeniorId(currentSeniorId);
+                    setMode('USER'); // 認証が完了したら高齢者モードへ
+                    // デモ用の高齢者IDをコンソールに表示
+                    console.log(`現在の高齢者ユーザーID (Familyアクセス用): ${currentSeniorId}`);
+                    setAuthReady(true);
+
+                    // 初期データのセットアップ (初回のみ)
+                    const profileRef = getProfileRef(firestore, appId, currentSeniorId);
+                    await setDoc(profileRef, {
+                        name: familyName,
+                        joinDate: serverTimestamp(),
+                        sharedWith: []
+                    }, { merge: true });
+
+                } else {
+                    // 匿名認証またはカスタムトークン認証を実行
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(authInstance, initialAuthToken);
+                    } else {
+                        await signInAnonymously(authInstance);
+                    }
+                }
+            });
+
+            return () => unsubscribe();
+        } catch (error) {
+            console.error("Firebase Initialization or Auth Error:", error);
+            setLoading(false);
+        }
+    }, [firebaseConfig, initialAuthToken, familyName]);
+
+    // 2. データ監視 (onSnapshot)
+    useEffect(() => {
+        if (!db || !authReady || !seniorId) return;
+
+        // 家族モードの場合はfamilyViewId、そうでなければseniorIdを使用
+        const seniorDataId = mode === 'FAMILY_VIEW' ? familyViewId : seniorId; 
+        if (!seniorDataId) return;
+
+        setLoading(true);
+
+        const inventoryRef = getInventoryCollection(db, appId, seniorDataId);
+        const activityRef = getActivityLogCollection(db, appId, seniorDataId);
+
+        // 在庫リストの監視
+        const unsubscribeInv = onSnapshot(inventoryRef, (snapshot) => {
+            const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            setInventory(items);
+            setLoading(false);
+        }, (error) => {
+            console.error("Inventory Snapshot Error:", error);
+            setLoading(false);
+        });
+
+        // 活動ログの監視
+        const unsubscribeLog = onSnapshot(query(activityRef, orderBy('timestamp', 'desc')), (snapshot) => {
+            const logs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            setActivityLog(logs);
+        }, (error) => {
+            console.error("ActivityLog Snapshot Error:", error);
+        });
+
+        return () => {
+            unsubscribeInv();
+            unsubscribeLog();
+        };
+    }, [db, authReady, seniorId, mode, familyViewId]);
+
+    // 3. AIコンシェルジュのロジックとチャット機能 (共同作業形式に変更)
+    const handleChatAction = useCallback(async (actionType, data = {}) => {
+        if (!db || !seniorId) return;
+
+        const currentSeniorId = mode === 'FAMILY_VIEW' ? familyViewId : seniorId;
+
+        const activityRef = getActivityLogCollection(db, appId, currentSeniorId);
+
+        const logAction = async (msg, type = 'chat') => {
+            await setDoc(doc(activityRef), {
+                type: type,
+                message: msg,
+                timestamp: serverTimestamp(),
+                seniorId: currentSeniorId,
+            });
+        };
+
+        if (actionType === 'CHECK_INVENTORY') {
+            const needsAttention = inventory.filter(item => item.estimatedDaysLeft < 10 && item.currentStock > 0);
+            
+            let chatMessage = '';
+            let followUpMessage = '';
+
+            if (needsAttention.length > 0) {
+                // 共同作業 (1): 要注意商品を明確に伝えて確認を促す
+                const firstItem = needsAttention[0].name;
+                chatMessage = `AI（ねこコンシェルジュ）: こんにゃちは、**${familyName}様**！在庫をチェックしたにゃん。**${firstItem}**など${needsAttention.length}点の商品が、もうすぐなくなるかもしれないにゃ！`;
+                
+                // 共同作業 (2): 次の行動を促す
+                followUpMessage = `AI（ねこコンシェルジュ）: 特に**${firstItem}**は、今のうちに「写真で在庫を記録」して、本当に残りが少ないか確認してみるにゃん？`;
+
+            } else {
+                chatMessage = `AI（ねこコンシェルジュ）: こんにゃちは、**${familyName}様**！ざっとチェックしたけど、急いで買うものはなさそうにゃん。ご安心くださーい。`;
+                followUpMessage = `AI（ねこコンシェルジュ）: 他に心配なものがあれば、いつでも「写真で在庫を記録」するにゃんよ。一緒に管理するにゃ！`;
+            }
+            
+            logAction(chatMessage, 'chat');
+            logAction(`ユーザー: 在庫確認を開始`, 'user_chat');
+            // 時間差で次のメッセージ（共同作業の提案）をログに追加（UX上のシミュレーション）
+            setTimeout(() => { logAction(followUpMessage, 'chat'); }, 1000);
+
+        } else if (actionType === 'ADD_ITEM') {
+            const newItemId = new Date().getTime().toString();
+            const { name, stock, days } = data;
+
+            const inventoryUpdate = {
+                name: name,
+                currentStock: parseInt(stock, 10),
+                lastUpdated: serverTimestamp(),
+                estimatedDaysLeft: parseInt(days, 10),
+                lastPurchaseDate: serverTimestamp(),
+                photoUrl: "https://placehold.co/100x100/A0B9E2/000000?text=写真",
+            };
+            
+            const inventoryCollection = getInventoryCollection(db, appId, currentSeniorId);
+            await setDoc(doc(inventoryCollection, newItemId), inventoryUpdate);
+            
+            // 共同作業 (1): 登録完了と記憶した情報の確認
+            let chatMessage = `AI（ねこコンシェルジュ）: **【記憶したにゃ！】** ${name}の在庫を**${stock}個**と確認したにゃ！`;
+            logAction(`ユーザー: 【写真登録】${name}を登録しました。`, 'photo');
+            logAction(chatMessage, 'chat');
+            
+            // 共同作業 (2): 予測と次の提案日の再確認
+            let followUpMessage = `AI（ねこコンシェルジュ）: このペースだと、次に確認するのは**約${days}日後**だにゃん。もしこの日数を変えたいなら、いつでも教えてにゃ！`;
+            setTimeout(() => { logAction(followUpMessage, 'chat'); }, 1000);
+
+        } else if (actionType === 'FAMILY_ORDER') {
+            const { name } = data;
+            const chatMessage = `家族: ${name}をオンライン注文しました。〇〇さん、もうすぐ届きますよ。`;
+            logAction(chatMessage, 'family_order');
+        }
+    }, [db, seniorId, inventory, familyName, mode, familyViewId]);
+
+    // ----------------------------------------------------------------------
+    // --- UI Components ---
+    // ----------------------------------------------------------------------
+
+    if (loading && !authReady) {
+        return <LoadingScreen message="初期設定と認証中..." />;
+    }
+
+    if (!firebaseConfig) {
+        return <LoadingScreen message="Firebase設定が見つかりません。アプリIDと設定を確認してください。" isError={true} />;
+    }
+
+    const commonContainer = "max-w-4xl mx-auto p-4 sm:p-6 bg-gray-50 min-h-screen";
+
+    const Header = ({ title, showModeSwitch = true }) => (
+        <header className="flex justify-between items-center pb-4 border-b border-pink-300">
+            <h1 className={LARGE_TEXT + " text-gray-800 flex items-center"}>
+                {mode === 'USER' && '😺'} {title}
+            </h1>
+            {showModeSwitch && (
+                <div className="flex space-x-2">
+                    <button
+                        onClick={() => setMode('USER')}
+                        className={`px-4 py-2 text-sm rounded-full font-bold transition shadow-md ${mode === 'USER' ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-pink-100'}`}
+                    >
+                        ご本人モード
+                    </button>
+                    <button
+                        onClick={() => setMode('FAMILY')}
+                        className={`px-4 py-2 text-sm rounded-full font-bold transition shadow-md ${mode === 'FAMILY' ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-emerald-100'}`}
+                    >
+                        ご家族モード
+                    </button>
+                </div>
+            )}
+        </header>
+    );
+
+    // --- 4. 高齢者ご本人モード (USER) ---
+    const UserView = () => {
+        const [showModal, setShowModal] = useState(false);
+        const [itemName, setItemName] = useState('');
+        const [itemStock, setItemStock] = useState(1);
+        const [itemDays, setItemDays] = useState(30);
+
+        const InventoryModal = () => (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+                <div className="bg-white p-6 rounded-3xl w-full max-w-md shadow-2xl">
+                    <h3 className="text-2xl font-black mb-4 text-gray-800 flex items-center">
+                        <Camera className="mr-3 text-pink-500" size={28} />
+                        在庫を記録する
+                    </h3>
+                    <p className="text-gray-600 mb-4 font-semibold">
+                        商品の**写真**を撮るか、手入力してください。
+                    </p>
+                    
+                    <div className="space-y-4">
+                        <div className="flex items-center space-x-3 p-4 bg-yellow-100 rounded-xl border border-yellow-300 shadow-inner">
+                            <Camera size={24} className="text-yellow-600 flex-shrink-0" />
+                            <p className="text-base text-yellow-800">
+                                AIがパッケージを読んで、商品名などを自動で入力した想定です。
+                            </p>
+                        </div>
+                        
+                        <InputGroup label="商品名" value={itemName} onChange={setItemName} placeholder="例: お米 (写真から認識)" />
+                        <InputGroup label="現在の在庫数 (個)" type="number" value={itemStock} onChange={v => setItemStock(Math.max(1, parseInt(v, 10)))} />
+                        <InputGroup label="次の提案までの日数" type="number" value={itemDays} onChange={v => setItemDays(Math.max(1, parseInt(v, 10)))} />
+                    </div>
+
+                    <div className="flex space-x-3 mt-6">
+                        <button
+                            onClick={() => setShowModal(false)}
+                            className="flex-1 p-4 bg-gray-300 text-gray-700 rounded-2xl font-bold hover:bg-gray-400 transition"
+                        >
+                            キャンセル
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (itemName && itemStock > 0 && itemDays > 0) {
+                                    handleChatAction('ADD_ITEM', { name: itemName, stock: itemStock, days: itemDays });
+                                    setItemName('');
+                                    setItemStock(1);
+                                    setItemDays(30);
+                                    setShowModal(false);
+                                }
+                            }}
+                            className="flex-1 p-4 bg-pink-500 text-white rounded-2xl font-black shadow-lg hover:bg-pink-600 transition"
+                        >
+                            <CheckCircle size={20} className="inline mr-2" />
+                            記録してAIに記憶させる
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        return (
+            <div className={commonContainer}>
+                <Header title={`${familyName}様のAIコンシェルジュ`} showModeSwitch={true} />
+                
+                <section className="mt-6 space-y-4">
+                    <p className="text-xl text-gray-700 font-black flex items-center">
+                        <MessageSquare className="mr-2 text-pink-600" size={24} />
+                        ねこコンシェルジュとの対話
+                    </p>
+                    <div className={CARD_CLASSES + " h-52 overflow-y-auto space-y-3 border-emerald-300"}>
+                        {activityLog.slice(0, 10).map(log => (
+                            <LogEntry key={log.id} log={log} isSenior={true} />
+                        ))}
+                    </div>
+                    
+                    <div className="flex space-x-4">
+                        <button
+                            onClick={() => handleChatAction('CHECK_INVENTORY')}
+                            className={BUTTON_SECONDARY + " flex-1 p-4 font-black text-xl"}
+                        >
+                            <MessageSquare size={24} className="inline mr-2" />
+                            AIに相談
+                        </button>
+                        <button
+                            onClick={() => setShowModal(true)}
+                            className={BUTTON_PRIMARY + " flex-1 p-4 font-black text-xl"}
+                        >
+                            <Camera size={24} className="inline mr-2" />
+                            在庫を記録する
+                        </button>
+                    </div>
+                </section>
+
+                <section className="mt-8 space-y-4">
+                    <p className="text-xl text-gray-700 font-black flex items-center">
+                        <List className="mr-2 text-pink-600" size={24} />
+                        現在の在庫リスト
+                    </p>
+                    <InventoryTable data={inventory} seniorId={seniorId} db={db} appId={appId} />
+                </section>
+
+                {showModal && <InventoryModal />}
+            </div>
+        );
+    };
+
+    // --- 5. 家族モード (FAMILY) ---
+    const FamilySetup = () => (
+        <div className={CARD_CLASSES + " mt-8 border-emerald-300"}>
+            <h3 className="text-2xl font-black mb-4 text-gray-800">
+                <Users className="inline mr-2 text-emerald-600" size={24} />
+                ご家族のデータにアクセス
+            </h3>
+            <p className="text-gray-600 mb-4">
+                閲覧したい**高齢者ユーザーID**を入力してください。このIDは、ご本人モードのコンソールログに表示されています。
+                <br/>
+                <span className="text-sm font-black text-pink-500">（デモ用ID: {seniorId || '認証完了後に表示'}）</span>
+            </p>
+            <div className="flex space-x-3">
+                <input
+                    type="text"
+                    placeholder="高齢者ユーザーIDを入力"
+                    value={familyViewId}
+                    onChange={(e) => setFamilyViewId(e.target.value)}
+                    className={INPUT_CLASSES + " flex-1"}
+                />
+                <button
+                    onClick={() => {
+                        if (familyViewId) {
+                            // 家族ビューに切り替え (データ監視はuseEffectが自動で切り替え)
+                            setMode('FAMILY_VIEW');
+                        } else {
+                            console.error("IDを入力してください。");
+                            alert("IDを入力してください。"); 
+                        }
+                    }}
+                    className="p-3 bg-emerald-500 text-white rounded-2xl font-bold shadow-md hover:bg-emerald-600 transition"
+                >
+                    アクセス
+                </button>
+            </div>
+        </div>
+    );
+
+    const FamilyView = () => {
+        const [orderItem, setOrderItem] = useState('');
+        const [showOrderModal, setShowOrderModal] = useState(false);
+
+        const OrderModal = () => (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+                <div className="bg-white p-6 rounded-3xl w-full max-w-md shadow-2xl">
+                    <h3 className="text-2xl font-black mb-4 text-gray-800 flex items-center">
+                        オンライン注文代行
+                    </h3>
+                    <p className="text-gray-600 mb-4">
+                        **{familyName}様**にオンラインスーパーで注文する商品を記録します。
+                    </p>
+                    <InputGroup label="注文した商品名" value={orderItem} onChange={setOrderItem} placeholder="例: お米 5kg" />
+
+                    <div className="flex space-x-3 mt-6">
+                        <button
+                            onClick={() => setShowOrderModal(false)}
+                            className="flex-1 p-4 bg-gray-300 text-gray-700 rounded-2xl font-bold hover:bg-gray-400 transition"
+                        >
+                            キャンセル
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (orderItem) {
+                                    handleChatAction('FAMILY_ORDER', { name: orderItem });
+                                    setOrderItem('');
+                                    setShowOrderModal(false);
+                                }
+                            }}
+                            className="flex-1 p-4 bg-emerald-500 text-white rounded-2xl font-black shadow-lg hover:bg-emerald-600 transition"
+                        >
+                            <CheckCircle size={20} className="inline mr-2" />
+                            注文を記録
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+
+
+        return (
+            <div className={commonContainer}>
+                <Header title={`【ご家族】${familyName}様の状況`} showModeSwitch={true} />
+                
+                <section className={CARD_CLASSES + " mt-6 border-pink-300"}>
+                    <h2 className="text-2xl font-black text-gray-800 flex items-center">
+                        <Home className="mr-2 text-emerald-600" size={24} />
+                        生活と在庫の状況
+                    </h2>
+                    <div className="flex justify-between items-center border-b pb-3 pt-4">
+                        <p className="font-semibold text-lg text-gray-700">最終確認日時</p>
+                        <p className="text-lg font-black text-gray-900">{timeAgo(activityLog[0]?.timestamp)}</p>
+                    </div>
+                    <div className="flex justify-between items-center border-b pb-3">
+                        <p className="font-semibold text-lg text-gray-700">安否ステータス</p>
+                        <p className={`text-lg font-black ${activityLog[0]?.type === 'chat' || activityLog[0]?.type === 'photo' ? 'text-pink-600' : 'text-yellow-600'}`}>
+                            {activityLog[0]?.type === 'chat' || activityLog[0]?.type === 'photo' ? '🟢 活動あり' : '🟡 確認必要'}
+                        </p>
+                    </div>
+
+                    <button
+                        onClick={() => setShowOrderModal(true)}
+                        className={BUTTON_SECONDARY + " w-full mt-4 p-4 font-black text-xl"}
+                    >
+                        <List size={24} className="inline mr-2" />
+                        オンライン注文を代行・記録
+                    </button>
+                </section>
+
+                <section className="mt-8 space-y-4">
+                    <p className="text-xl text-gray-700 font-black flex items-center">
+                        <List className="mr-2 text-emerald-600" size={24} />
+                        リアルタイム在庫リスト
+                    </p>
+                    <InventoryTable data={inventory} isFamily={true} />
+                </section>
+
+                <section className="mt-8 space-y-4">
+                    <p className="text-xl text-gray-700 font-black flex items-center">
+                        <MessageSquare className="mr-2 text-emerald-600" size={24} />
+                        活動ログ (AIとの会話含む)
+                    </p>
+                    <div className={CARD_CLASSES + " h-52 overflow-y-auto space-y-3 border-pink-300"}>
+                        {activityLog.slice(0, 10).map(log => (
+                            <LogEntry key={log.id} log={log} isSenior={false} />
+                        ))}
+                    </div>
+                </section>
+                {showOrderModal && <OrderModal />}
+            </div>
+        );
+    };
+
+
+    // 7. メインレンダリング
+    if (mode === 'SETUP' || (mode === 'FAMILY' && !familyViewId)) {
+        return (
+            <div className={commonContainer}>
+                <Header title="高齢者向けAIコンシェルジュアプリ" showModeSwitch={true} />
+                {mode === 'SETUP' && (
+                    <div className={CARD_CLASSES + " mt-8 text-center border-pink-300"}>
+                        <p className="text-2xl font-black text-pink-700">ご利用モードを選択してください</p>
+                        <p className="mt-2 text-gray-600">現在、認証が完了しました。（ID: {seniorId}）</p>
+                    </div>
+                )}
+                {mode === 'FAMILY' && <FamilySetup />}
+            </div>
+        );
+    }
+
+    if (mode === 'USER') {
+        return <UserView />;
+    }
+
+    if (mode === 'FAMILY_VIEW') {
+        return <FamilyView />;
+    }
+};
+
+export default App;
